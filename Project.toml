@@ -3,6 +3,10 @@ uuid = "826fe967-3b9e-4bcc-aa4f-7761c745bf5e"
 authors = ["Joshua Billson"]
 version = "1.0.0-DEV"
 
+[deps]
+Pipe = "b98c9c47-44ae-5843-9183-064241ee97a0"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
 [compat]
 julia = "1.6.7"
 
