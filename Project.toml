@@ -1,7 +1,7 @@
 name = "DataViews"
 uuid = "826fe967-3b9e-4bcc-aa4f-7761c745bf5e"
 authors = ["Joshua Billson"]
-version = "1.0.0-DEV"
+version = "0.0.1"
 
 [deps]
 Pipe = "b98c9c47-44ae-5843-9183-064241ee97a0"
