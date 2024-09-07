@@ -51,9 +51,12 @@ getobs(x::Any) = getobs(x, 1:numobs(x))
 getobs(x::Any, i::Integer) = getindex(x, i)
 getobs(x::AbstractVector, i::Integer) = x[i]
 getobs(x::AbstractArray{T,N}, i::Integer) where {T,N} = selectdim(x, N, i:i)
-getobs(x::Any, i::AbstractVector) = @pipe map(j -> getobs(x, j), i) |> stackobs(_...)
+getobs(x::Any, i::AbstractVector) = stackobs(map(j -> getobs(x, j), i))
 
-Base.getindex(x::AbstractIterator, i::AbstractVector) = @pipe map(j -> getobs(x, j), i) |> stackobs(_...)
+stackobs(x::AbstractIterator) = x[:]
+
+Base.getindex(x::AbstractIterator, ::Colon) = getindex(x, firstindex(x):lastindex(x))
+Base.getindex(x::AbstractIterator, i::AbstractVector) = stackobs(map(j -> getobs(x, j), i))
 
 Base.iterate(x::AbstractIterator, state=1) = state > numobs(x) ? nothing : (x[state], state+1)
 
@@ -76,7 +79,7 @@ end
 
 Base.length(x::MappedView) = numobs(data(x))
 
-Base.getindex(x::MappedView, i::Int) = @pipe getobs(x.data, i) |> x.f
+Base.getindex(x::MappedView, i::Int) = getobs(x.data, i) |> x.f
 
 # JoinedView
 
@@ -143,15 +146,12 @@ struct ZippedView{D} <: AbstractIterator{D}
     data::D
 
     ZippedView(data...) = ZippedView(data)
-    function ZippedView(data::D) where {D<:Tuple}
-        @assert _all_equal(eachindex, data) "Iterators have different indices!"
-        return new{D}(data)
-    end
+    ZippedView(data::D) where {D<:Tuple} = new{D}(data)
 end
 
-Base.length(x::ZippedView) = data(x) |> first |> length
+Base.length(x::ZippedView) = map(numobs, data(x)) |> minimum
 
-Base.getindex(x::ZippedView, i::Int) = map(d -> d[i], data(x))
+Base.getindex(x::ZippedView, i::Int) = map(d -> getobs(d, i), data(x))
 
 # BatchedView
 
@@ -180,12 +180,22 @@ end
 # Methods
 
 """
+    obsview(data, indices::AbstractVector{<:Integer})
+
+Construct a lazy view of `data` at the specified `indices`.
+"""
+obsview(data, indices::AbstractVector{<:Integer}) = ObsView(data, indices)
+
+"""
+    splitobs([rng=default_rng()], data::Int; kw...)
+    splitobs([rng=default_rng()], data::AbstractVector{Int}; kw...)
     splitobs([rng=default_rng()], data; at=0.8, shuffle=true)
 
 Return a set of indices that splits the given observations according to the given break points.
 
 # Arguments
-- `data`: Any type that implements `Base.length()`. 
+- `data`: Any type that implements either `Base.length()` or `numobs`. Alternatively, can be
+either an `AbstractVector` of indices or an `Int` indicating the number of observations.
 - `at`: The fractions at which to split `data`. 
 - `shuffle`: If `true`, shuffles the indices before splitting. 
 
@@ -199,7 +209,8 @@ julia> splitobs(1:100, at=(0.7, 0.2), shuffle=false)
 ```
 """
 splitobs(data; kwargs...) = splitobs(Random.default_rng(), data; kwargs...)
-splitobs(rng::Random.AbstractRNG, data; kwargs...) = map(x -> ObsView(data, x), splitobs(rng, eachindex(data); kwargs...))
+splitobs(rng::Random.AbstractRNG, data; kwargs...) = map(x -> ObsView(data, x), splitobs(rng, 1:numobs(data); kwargs...))
+splitobs(rng::Random.AbstractRNG, n::Int; kwargs...) = splitobs(rng, 1:n; kwargs...)
 function splitobs(rng::Random.AbstractRNG, data::AbstractVector{Int}; at=0.8, shuffle=true)
     sum(at) > 1 && throw(ArgumentError("'at' cannot sum to more than 1!"))
     indices = shuffle ? Random.randperm(rng, length(data)) : collect(1:length(data))
@@ -275,10 +286,10 @@ provided for reproducible results.
 """
 sampleobs(data, n::Int) = sampleobs(Random.default_rng(), data, n)
 function sampleobs(rng::Random.AbstractRNG, data, n::Int)
-    if (n > length(data)) || (n < 0)
-        throw(ArgumentError("n must be between 0 and $(length(data)) (received $n)."))
+    if (n > numobs(data)) || (n < 0)
+        throw(ArgumentError("n must be between 0 and $(numobs(data)) (received $n)."))
     end
-    takeobs(data, Random.randperm(rng, length(data))[1:n])
+    takeobs(data, Random.randperm(rng, numobs(data))[1:n])
 end
 
 """
@@ -287,4 +298,40 @@ end
 Randomly shuffle the elements of `data`. Provide `rng` for reproducible results.
 """
 shuffleobs(data) = shuffleobs(Random.default_rng(), data)
-shuffleobs(rng::Random.AbstractRNG, data) = takeobs(data, Random.randperm(rng, length(data)))
+shuffleobs(rng::Random.AbstractRNG, data) = takeobs(data, Random.randperm(rng, numobs(data)))
+
+"""
+    kfolds(data, k = 5)
+    kfolds(data::Integer, k = 5)
+    kfolds(data::AbstractVector{<:Integer}, k = 5)
+
+Compute the train/validation splits for `k` repartitions of
+`n` observations, and return them as a vector of `(train, validation)`
+pairs. If `data` is an `Integer`, then a vector containing the indices `1:n`
+will be materialized and partitioned. If `data` is an iterable, 
+a lazy `ObsView` will be constructed for each fold.
+"""
+function kfolds(data::AbstractVector{<:Integer}, k::Integer = 5)
+    folds = kfolds(length(data), k)
+    return [(getindex(data, train), getindex(data, val)) for (train, val) in folds]
+end
+function kfolds(data, k::Integer = 5)
+    folds = kfolds(length(data), k)
+    return [(obsview(data, train), obsview(data, val)) for (train, val) in folds]
+end
+function kfolds(n::Integer, k::Integer = 5)
+    2 <= k <= n || throw(ArgumentError("n must be positive and k must to be within 2:$(max(2,n))"))
+    # Compute size of each fold, dividing remaining observations between folds
+    sizes = fill(floor(Int, n/k), k)
+    for i = 1:(n % k)
+        sizes[i] = sizes[i] + 1
+    end
+    # Compute start offset for each fold
+    offsets = cumsum(sizes) .- sizes .+ 1
+    # Compute the validation indices using the offsets and sizes
+    val_indices = map((o,s)->collect(o:o+s-1), offsets, sizes)
+    # The train indices are then the indicies not in validation
+    train_indices = map(idx->setdiff(1:n,idx), val_indices)
+    # We return a tuple of arrays
+    collect(zip(train_indices, val_indices))
+end

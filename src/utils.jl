@@ -64,10 +64,26 @@ julia> stackobs(data...) .|> size
 ((256, 256, 3, 10), (256, 256, 1, 10))
 ```
 """
-stackobs(x::Vararg{Any}) = [x...]
-stackobs(x::Vararg{AbstractArray{T,N}}) where {T,N} = cat(x..., dims=N)
-stackobs(::Vararg{AbstractArray}) = throw(ArgumentError("Cannot stack arrays with different types or dimensions!"))
-stackobs(x::Vararg{Tuple}) = @pipe collect(x) |> unzip |> map(stackobs, _)
+stackobs(x::AbstractVector) = x
+stackobs(::Vector{<:AbstractArray}) = throw(ArgumentError("Cannot stack arrays with different types or dimensions!"))
+function stackobs(xs::Vector{<:AbstractArray{T,N}}) where {T,N}
+    if size(first(xs), N) == 1
+        return cat(xs..., dims=N)
+    else
+        return cat(xs..., dims=N+1)
+    end
+end
+function stackobs(xs::Vector{<:Tuple})
+    n = length(first(xs))
+    @assert all(length.(xs) .== n) "Cannot batch tuples with different lengths"
+    return ntuple(i -> stackobs([x[i] for x in xs]), n)
+end
+function stackobs(xs::Vector{<:NamedTuple})
+    all_keys = [sort(collect(keys(x))) for x in xs]
+    ks = all_keys[1]
+    @assert all(==(ks), all_keys) "Cannot batch named tuples with different keys"
+    NamedTuple(k => stackobs([x[k] for x in xs]) for k in ks)
+end
 
 """
     unzip(x::AbstractVector{<:Tuple})

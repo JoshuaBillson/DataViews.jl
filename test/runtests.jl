@@ -58,4 +58,26 @@ const rng = StableRNG(123)
 
     # shuffleobs
     @test all(shuffleobs(StableRNGs.StableRNG(123), v1) .== [4, 7, 2, 1, 3, 8, 5, 6, 10, 9])
+
+    # kfolds
+    @test kfolds(1:10, 3)[1] == ([5, 6, 7, 8, 9, 10], [1, 2, 3, 4])
+    @test kfolds(1:10, 3)[2] == ([1, 2, 3, 4, 8, 9, 10], [5, 6, 7])
+    @test kfolds(1:10, 3)[3] == ([1, 2, 3, 4, 5, 6, 7], [8, 9, 10])
+    shuffled = shuffleobs(StableRNGs.StableRNG(123), 1:5) 
+    folds = kfolds(shuffleobs(StableRNGs.StableRNG(123), 1:5), 2)
+    @test all(folds[1][1] .== shuffled[4:5])
+    @test all(folds[1][2] .== shuffled[1:3])
+
+    # DataLoader
+    data_x = rand(28, 28, 3, 100)
+    data_y = rand(10, 100)
+    z = zipobs(data_x, data_y)
+    @test collect(DataLoader(v1, batchsize=3))[1] == [1, 2, 3]
+    @test collect(DataLoader(v1, batchsize=3))[2] == [4, 5, 6]
+    @test collect(DataLoader(v1, batchsize=3))[3] == [7, 8, 9]
+    @test collect(DataLoader(v1, batchsize=3))[4] == [10]
+    @test (DataLoader(data_x; batchsize=5) |> first |> size) == (28, 28, 3, 5)
+    @test (DataLoader(data_y; batchsize=5) |> first |> size) == (10, 5)
+    @test (DataLoader(z; batchsize=5) |> first .|> size) == ((28, 28, 3, 5), (10, 5))
+    @test (collect(DataLoader(data_y; batchsize=40, shuffle=true)) .|> size) == [(10,40), (10,40), (10,20)]
 end
