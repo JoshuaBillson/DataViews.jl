@@ -46,24 +46,3 @@ end
 function Base.length(x::DataLoader)
     return x.partial ? cld(numobs(x.data), x.batchsize) : fld(numobs(x.data), x.batchsize)
 end
-
-function Base.show(io::IO, ::MIME"text/plain", e::DataLoader)
-    if Base.haslength(e)
-        print(io, length(e), "-element ")
-    else
-        print(io, "Unknown-length ")
-    end
-    Base.showarg(io, e, false)
-    print(io, "\n  with first element:")
-    print(io, "\n  ", _expanded_summary(first(e)))
-end
-
-_expanded_summary(x) = summary(x)
-function _expanded_summary(xs::Tuple)
-  parts = [_expanded_summary(x) for x in xs]
-  "(" * join(parts, ", ") * ",)"
-end
-function _expanded_summary(xs::NamedTuple)
-  parts = ["$k = "*_expanded_summary(x) for (k,x) in zip(keys(xs), xs)]
-  "(; " * join(parts, ", ") * ")"
-end
