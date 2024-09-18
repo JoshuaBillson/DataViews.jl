@@ -2,6 +2,7 @@ using DataViews
 using Test
 
 using Random
+using Statistics
 using StableRNGs
 
 const rng = StableRNG(123)
@@ -13,12 +14,42 @@ const rng = StableRNG(123)
     v1 = ObsView(1:10, 1:10)
     v2 = ObsView(21:30, 1:10)
 
+    # normalize and denormalize
+    x = rand(StableRNG(123), 128, 128, 3, 100)
+    μ = mean(x, dims=(1, 2, 4)) |> vec
+    σ = std(x, dims=(1, 2, 4)) |> vec
+    normalized = normalize(x, μ, σ, dim=3)
+    denormalized = denormalize(normalized, μ, σ, dim=3)
+    @test all(isapprox.(mean(normalized, dims=(1,2,4)), 0.0, atol=1e-12))
+    @test all(isapprox.(std(normalized, dims=(1,2,4)), 1.0, atol=1e-12))
+    @test all(denormalized .≈ x)
+    @test all(isapprox.(mean(normobs(x, μ, σ, dim=3)[1:2:end], dims=(1,2,4)), 0.0, atol=1e-3))
+    @test all(isapprox.(std(normobs(x, μ, σ, dim=3)[1:2:end], dims=(1,2,4)), 1.0, atol=1e-3))
+    @test_throws AssertionError normalize(x, μ, σ, dim=-1)
+    @test_throws AssertionError normalize(x, μ, σ, dim=5)
+    @test_throws AssertionError normalize(x, μ, σ, dim=1)
+
+    # onehot
+    a = [1, 2, 3, 3, 1]
+    b = rand([0,1], 28, 28, 1, 4)
+    encoded_a = onehot(a, [1, 2, 3])
+    encoded_b = onehot(b, [0,1], dim=3)
+    @test size(encoded_a) == (3, 5)
+    @test size(encoded_b) == (28, 28, 2, 4)
+    @test encoded_b[:,:,2:2,:] == b
+    @test encoded_b[:,:,1:1,:] == 1 .- b
+    @test_throws AssertionError onehot(b, [0,1], dim=2)
+    @test_throws AssertionError onehot(b, [0,1], dim=0)
+    @test_throws AssertionError onehot(b, [0,1], dim=-1)
+    @test_throws AssertionError onehot(b, [0,1], dim=4)
+    @test_throws AssertionError onehot(b, [0,1], dim=5)
+
     # zipobs
-    @test all(collect(zipobs(v1, v2)) .== collect(zip(x1, x2)))  # Test zipobs
+    @test all(zipobs(v1, v2) .== stackobs(collect(zip(x1, x2))))  # Test zipobs
 
     # repeatobs
     @test all(repeatobs(v1, 5) .== reduce(vcat, [x1 for _ in 1:5]))  # Test repeatobs
-    @test all(repeatobs(zipobs(v1, v2), 2) .== reduce(vcat, [collect(zip(x1, x2)) for _ in 1:2]))  # zipobs + repeatobs
+    @test all(repeatobs(zipobs(v1, v2), 2) .== stackobs(reduce(vcat, [collect(zip(x1, x2)) for _ in 1:2])))  # zipobs + repeatobs
 
     # splitobs with shuffle
     @test first(splitobs(StableRNGs.StableRNG(123), 1:10, at=0.7)) == [4, 7, 2, 1, 3, 8, 5]
