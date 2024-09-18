@@ -21,7 +21,9 @@ Authors of custom data containers should implement `Base.length` for their type 
 `numobs` should only be implemented for types where there is a difference between `numobs` and `Base.length`
 (such as multi-dimensional arrays).
 """
-numobs(x::Any) = length(x)
+numobs(x::Any) = Tables.istable(x) ? length(Tables.rows(x)) : length(x)
+numobs(x::Tuple) = map(numobs, x) |> minimum
+numobs(x::NamedTuple) = map(numobs, x) |> minimum
 numobs(x::AbstractArray{T,N}) where {T,N} = size(x, N)
 
 """
@@ -48,12 +50,19 @@ decision themselves.
 The output should be consistent when `idx` is a scalar vs vector.
 """
 getobs(x::Any) = getobs(x, 1:numobs(x))
-getobs(x::Any, i::Integer) = getindex(x, i)
 getobs(x::AbstractVector, i::Integer) = x[i]
-getobs(x::AbstractArray{T,N}, i::Integer) where {T,N} = selectdim(x, N, i:i)
+getobs(x::Tuple, i::Integer) = map(x -> getobs(x, i), x) |> _flatten_tuple
+getobs(x::NamedTuple, i::Integer) = map(x -> getobs(x, i), x)
+getobs(x::Any, i::Integer) = Tables.istable(x) ? Tables.subset(x, i, viewhint=false) : x[i]
+getobs(x::AbstractArray{T,N}, i::Integer) where {T,N} = selectdim(x, N, i:i) |> collect
 getobs(x::Any, i::AbstractVector) = stackobs(map(j -> getobs(x, j), i))
 
+firstobs(x) = getobs(x, 1)
+lastobs(x) = getobs(x, numobs(x))
+
 stackobs(x::AbstractIterator) = x[:]
+
+Base.collect(x::AbstractIterator) = x[:]
 
 Base.getindex(x::AbstractIterator, ::Colon) = getindex(x, firstindex(x):lastindex(x))
 Base.getindex(x::AbstractIterator, i::AbstractVector) = stackobs(map(j -> getobs(x, j), i))
@@ -94,6 +103,8 @@ struct JoinedView{D} <: AbstractIterator{D}
     JoinedView(data...) = JoinedView(data)
     JoinedView(data::D) where {D <: Tuple} = new{D}(data)
 end
+
+data(x::JoinedView) = map(data, x.data)
 
 Base.length(x::JoinedView) = map(numobs, x.data) |> sum
 
@@ -149,9 +160,11 @@ struct ZippedView{D} <: AbstractIterator{D}
     ZippedView(data::D) where {D<:Tuple} = new{D}(data)
 end
 
+data(x::ZippedView) = map(data, x.data)
+
 Base.length(x::ZippedView) = map(numobs, data(x)) |> minimum
 
-Base.getindex(x::ZippedView, i::Int) = map(d -> getobs(d, i), data(x))
+Base.getindex(x::ZippedView, i::Int) = map(d -> getobs(d, i), data(x)) |> _flatten_tuple
 
 # BatchedView
 
@@ -174,6 +187,38 @@ function Base.getindex(x::BatchedView, i::Int)
         return getobs(x.data, start_index:end_index)
     else
         throw(BoundsError(x, i))
+    end
+end
+
+# CachedView
+
+"""
+    CachedView(data)
+
+Construct an iterator that caches each element in memory on the first retrieval.
+When an index is passed for the first time, the corresponding element will be saved
+in a lookup table, which will be used for every subsequent retrieval. Useful for
+reusing the result of expensive computations.
+"""
+struct CachedView{D,V} <: AbstractIterator{D}
+    data::D
+    cache::Dict{Int,V}
+end
+
+function CachedView(data)
+    cache = Dict{Int,typeof(firstobs(data))}()
+    return CachedView(data, cache)
+end
+
+Base.length(x::CachedView) = numobs(x.data)
+
+function Base.getindex(x::CachedView, i::Int)
+    if i in keys(x.cache)
+        return x.cache[i]
+    else
+        result = getobs(x.data, i)
+        x.cache[i] = result
+        return result
     end
 end
 
@@ -299,6 +344,10 @@ Randomly shuffle the elements of `data`. Provide `rng` for reproducible results.
 """
 shuffleobs(data) = shuffleobs(Random.default_rng(), data)
 shuffleobs(rng::Random.AbstractRNG, data) = takeobs(data, Random.randperm(rng, numobs(data)))
+
+function normobs(data, μ::AbstractVector{<:Real}, σ::AbstractVector{<:Real}; dim=1)
+    return mapobs(x -> normalize(x, μ, σ, dim=dim), data)
+end
 
 """
     kfolds(data, k = 5)
