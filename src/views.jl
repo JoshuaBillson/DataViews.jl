@@ -276,13 +276,21 @@ Create a new iterator where the elements of each iterator in `data` are returned
 
 # Example
 ```jldoctest
-julia> zipobs(1:5, 41:45, [:a, :b, :c, :d, :e]) |> collect
-5-element Vector{Any}:
+julia> z = zipobs(1:5, 41:45, [:a, :b, :c, :d, :e])
+5-element ZippedView
+  with first element:
+  (Int64, Int64, Symbol)
+
+julia> [x for x in z]
+5-element Vector{Tuple{Int64, Int64, Symbol}}:
  (1, 41, :a)
  (2, 42, :b)
  (3, 43, :c)
  (4, 44, :d)
  (5, 45, :e)
+
+julia> z[1:2:end]
+([1, 3, 5], [41, 43, 45], [:a, :c, :e])
 ```
 """
 zipobs(data...) = zipobs(tuple(data...))
