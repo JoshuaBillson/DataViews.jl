@@ -30,6 +30,82 @@ function rmobs(x::AbstractArray{<:Any,N}) where {N}
 end
 
 """
+    normalize(x::AbstractArray, μ::AbstractVector, σ::AbstractVector; dim=1)
+
+Normalize the input array with respect to the specified dimension so that the mean is 0
+and the standard deviation is 1.
+
+# Parameters
+- `μ`: A `Vector` of means for each index in `dim`.
+- `σ`: A `Vector` of standard deviations for each index in `dim`.
+- `dim`: The dimension along which to normalize the input array.
+"""
+function normalize(x::AbstractArray{<:Real,N}, μ::AbstractVector, σ::AbstractVector; dim=1) where {N}
+    @assert 1 <= dim <= N
+    @assert length(μ) == length(σ) == size(x,dim)
+    return (x .- _vec2array(μ, N, dim)) ./ _vec2array(σ, N, dim)
+end
+
+"""
+    denormalize(x::AbstractArray, μ::AbstractVector, σ::AbstractVector; dim=1)
+
+Denormalize the input array with respect to the specified dimension. Reverses the
+effect of `normalize`.
+
+# Parameters
+- `μ`: A `Vector` of means for each index in `dim`.
+- `σ`: A `Vector` of standard deviations for each index in `dim`.
+- `dim`: The dimension along which to denormalize the input array.
+"""
+function denormalize(x::AbstractArray{<:Real,N}, μ::AbstractVector, σ::AbstractVector; dim=1) where {N}
+    @assert 1 <= dim <= N
+    @assert length(μ) == length(σ) == size(x,dim)
+    return (x .* _vec2array(σ, N, dim)) .+ _vec2array(μ, N, dim)
+end
+
+function _vec2array(x::AbstractVector, ndims::Int, dim::Int)
+    return reshape(x, ntuple(i -> i == dim ? Colon() : 1, ndims))
+end
+
+"""
+    onehot(x::AbstractArray, labels; dim=1)
+
+Converts the input array `x` into a one-hot encoded representation based on the given `labels`. 
+One-hot encoding transforms categorical data into an `Array` where each category is represented 
+as a vector with one `1` and all other positions set to `0`.
+
+# Arguments
+- `x`: The input array containing categorical values that need to be one-hot encoded.
+- `labels`: The set of possible labels (or categories) that `x` can take. This can be a vector of unique class labels or categories.
+
+# Keyword Arguments
+- `dim`: The dimension along which the one-hot encoding will be applied.
+
+# Examples
+```julia
+julia> x = [1, 2, 3, 3, 1];
+
+julia> labels = [1, 2, 3];
+
+julia> onehot(x, labels)
+3×5 BitMatrix:
+ 1  0  0  0  1
+ 0  1  0  0  0
+ 0  0  1  1  0
+
+julia> x = rand([0,1], 28, 28, 1, 4);
+
+julia> onehot(x, [0,1], dim=3) |> size
+(28, 28, 2, 4)
+"""
+onehot(x::AbstractVector, labels; kw...) = onehot(reshape(x, (1,:)), labels)
+function onehot(x::AbstractArray{<:Any,N}, labels; dim=1) where {N}
+    @assert 1 <= dim <= N - 1
+    @assert size(x, dim) == 1
+    return cat(map(label -> x .== label, labels)..., dims=dim)
+end
+
+"""
     stackobs(x...)
 
 Stack the elements in `x` as if they were observations in a batch. If `x` is an `AbstractArray`, 
@@ -100,3 +176,10 @@ unzip(x) = map(f -> getfield.(x, f), fieldnames(eltype(x)))
 
 _all_equal(f, xs) = map(f, xs) |> _all_equal
 _all_equal(xs) = all(==(first(xs)), xs)
+
+_flatten_tuple(x::Tuple) = reduce(_flatmerge, x)
+
+_flatmerge(a, b::Tuple) = (a, reduce(_flatmerge, b)...)
+_flatmerge(a::Tuple, b) = (reduce(_flatmerge, a)..., b)
+_flatmerge(a::Tuple, b::Tuple) = (reduce(_flatmerge, a)..., reduce(_flatmerge, b)...)
+_flatmerge(a, b) = (a, b)
