@@ -25,6 +25,10 @@ const rng = StableRNG(123)
     @test all(denormalized .≈ x)
     @test all(isapprox.(mean(normobs(x, μ, σ, dim=3)[1:2:end], dims=(1,2,4)), 0.0, atol=1e-3))
     @test all(isapprox.(std(normobs(x, μ, σ, dim=3)[1:2:end], dims=(1,2,4)), 1.0, atol=1e-3))
+    @test typeof(normalize(Float16.(x), μ, σ; dim=3)) == Array{Float16,4}
+    @test typeof(normalize(rand(StableRNG(123), [0,1], 128, 128, 3, 100), μ, σ; dim=3)) == Array{Float32,4}
+    @test typeof(denormalize(Float16.(x), μ, σ; dim=3)) == Array{Float16,4}
+    @test typeof(denormalize(rand(StableRNG(123), [0,1], 128, 128, 3, 100), μ, σ; dim=3)) == Array{Float32,4}
     @test_throws AssertionError normalize(x, μ, σ, dim=-1)
     @test_throws AssertionError normalize(x, μ, σ, dim=5)
     @test_throws AssertionError normalize(x, μ, σ, dim=1)

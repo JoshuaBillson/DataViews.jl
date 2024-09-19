@@ -40,10 +40,11 @@ and the standard deviation is 1.
 - `σ`: A `Vector` of standard deviations for each index in `dim`.
 - `dim`: The dimension along which to normalize the input array.
 """
-function normalize(x::AbstractArray{<:Real,N}, μ::AbstractVector, σ::AbstractVector; dim=1) where {N}
+normalize(x::AbstractArray{<:Integer}, μ::AbstractVector, σ::AbstractVector; kw...) = normalize(Float32.(x), μ, σ; kw...)
+function normalize(x::AbstractArray{T,N}, μ::AbstractVector, σ::AbstractVector; dim=1) where {T<:AbstractFloat,N}
     @assert 1 <= dim <= N
     @assert length(μ) == length(σ) == size(x,dim)
-    return (x .- _vec2array(μ, N, dim)) ./ _vec2array(σ, N, dim)
+    return (x .- _vec2array(T.(μ), N, dim)) ./ _vec2array(T.(σ), N, dim)
 end
 
 """
@@ -57,10 +58,11 @@ effect of `normalize`.
 - `σ`: A `Vector` of standard deviations for each index in `dim`.
 - `dim`: The dimension along which to denormalize the input array.
 """
-function denormalize(x::AbstractArray{<:Real,N}, μ::AbstractVector, σ::AbstractVector; dim=1) where {N}
+denormalize(x::AbstractArray{<:Integer}, μ::AbstractVector, σ::AbstractVector; kw...) = denormalize(Float32.(x), μ, σ; kw...)
+function denormalize(x::AbstractArray{T,N}, μ::AbstractVector, σ::AbstractVector; dim=1) where {T<:AbstractFloat,N}
     @assert 1 <= dim <= N
     @assert length(μ) == length(σ) == size(x,dim)
-    return (x .* _vec2array(σ, N, dim)) .+ _vec2array(μ, N, dim)
+    return (x .* _vec2array(T.(σ), N, dim)) .+ _vec2array(T.(μ), N, dim)
 end
 
 function _vec2array(x::AbstractVector, ndims::Int, dim::Int)
