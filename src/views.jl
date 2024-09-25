@@ -86,7 +86,7 @@ struct MappedView{F<:Function,D} <: AbstractIterator{D}
     data::D
 end
 
-Base.length(x::MappedView) = numobs(data(x))
+Base.length(x::MappedView) = numobs(x.data)
 
 Base.getindex(x::MappedView, i::Int) = getobs(x.data, i) |> x.f
 
@@ -162,7 +162,7 @@ end
 
 data(x::ZippedView) = map(data, x.data)
 
-Base.length(x::ZippedView) = map(numobs, data(x)) |> minimum
+Base.length(x::ZippedView) = map(numobs, x.data) |> minimum
 
 Base.getindex(x::ZippedView, i::Int) = map(d -> getobs(d, i), data(x)) |> _flatten_tuple
 
