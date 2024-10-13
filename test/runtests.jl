@@ -50,6 +50,7 @@ const rng = StableRNG(123)
 
     # zipobs
     @test all(zipobs(v1, v2) .== stackobs(collect(zip(x1, x2))))  # Test zipobs
+    @test all(zipobs(mapobs(x -> x * 2, v1), mapobs(x -> x * 2, v2)) .== (v1 .* 2, v2 .* 2))
 
     # repeatobs
     @test all(repeatobs(v1, 5) .== reduce(vcat, [x1 for _ in 1:5]))  # Test repeatobs

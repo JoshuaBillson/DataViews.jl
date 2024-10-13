@@ -164,7 +164,7 @@ data(x::ZippedView) = map(data, x.data)
 
 Base.length(x::ZippedView) = map(numobs, x.data) |> minimum
 
-Base.getindex(x::ZippedView, i::Int) = map(d -> getobs(d, i), data(x)) |> _flatten_tuple
+Base.getindex(x::ZippedView, i::Int) = map(d -> getobs(d, i), x.data) |> _flatten_tuple
 
 # BatchedView
 
