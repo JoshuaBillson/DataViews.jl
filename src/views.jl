@@ -172,10 +172,11 @@ struct BatchedView{D} <: AbstractIterator{D}
     data::D
     batchsize::Int
     partial::Bool
+    parallel::Bool
 end
 
-function BatchedView(data; batchsize=1, partial=true)
-    return BatchedView(data, batchsize, partial)
+function BatchedView(data; batchsize=1, partial=true, parallel=true)
+    return BatchedView(data, batchsize, partial, parallel)
 end
 
 Base.length(x::BatchedView) = x.partial ? cld(numobs(x.data), x.batchsize) : fld(numobs(x.data), x.batchsize)
@@ -184,7 +185,15 @@ function Base.getindex(x::BatchedView, i::Int)
     if i <= length(x)
         start_index = (i - 1) * x.batchsize + 1
         end_index = min(start_index + x.batchsize - 1, numobs(x.data))
-        return getobs(x.data, start_index:end_index)
+        if x.parallel
+            dst = [Ref{Any}() for _ in start_index:end_index]
+            Threads.@threads for (i, j) in collect(enumerate(start_index:end_index))
+                dst[i][] = getobs(x.data, j)
+            end
+            return stackobs(map(x -> x[], dst))
+        else
+            return getobs(x.data, start_index:end_index)
+        end
     else
         throw(BoundsError(x, i))
     end

@@ -29,7 +29,7 @@ function Base.iterate(x::DataLoader)
     data = x.shuffle ? shuffleobs(x.rng, x.data) : ObsView(x.data, 1:numobs(x.data))
 
     # Partition Into Batches
-    batches = BatchedView(data, batchsize=x.batchsize, partial=x.partial)
+    batches = BatchedView(data, batchsize=x.batchsize, partial=x.partial, parallel=x.parallel)
 
     # Return Observations
     obs, state = iterate(batches)
